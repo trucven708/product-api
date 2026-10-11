@@ -1,0 +1,22 @@
+services:
+  nammongodb:
+    image: mongo:latest
+    container_name: nammongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  product-api:
+    build: .
+    container_name: product-api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      MONGO_URI: mongodb://nammongodb:27017/productdb
+    depends_on:
+      - nammongodb
+
+volumes:
+  mongo-data:
