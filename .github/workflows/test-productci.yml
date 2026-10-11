@@ -1,0 +1,48 @@
+name: Test Product CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cài thư viện
+        run: npm ci
+
+      - name: Kiểm tra cú pháp server.js
+        run: node --check server.js
+
+      - name: Kiểm tra file docker-compose
+        run: docker compose config
+
+      - name: Build và chạy hệ thống, chờ healthy
+        run: docker compose up -d --build --wait
+
+      - name: Test API (POST rồi GET)
+        run: |
+          curl --fail -X POST http://localhost:3000/api/products \
+            -H "Content-Type: application/json" \
+            -d '{"pid":1,"pname":"Laptop","price":15000000,"quantity":10}'
+          curl --fail http://localhost:3000/api/products
+
+      - name: In log nếu có lỗi
+        if: failure()
+        run: docker compose logs
+
+      - name: Dọn dẹp
+        if: always()
+        run: docker compose down -v
