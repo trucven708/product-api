@@ -1,0 +1,121 @@
+name: Test Product CI Prod
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-prod-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  crud-test:
+    name: CRUD test với MongoDB service
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 20s
+
+    env:
+      PORT: 3000
+      MONGO_URI: mongodb://localhost:27017/productdb_ci
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cài thư viện
+        run: npm ci
+
+      - name: Kiểm tra cú pháp
+        run: node --check server.js
+
+      - name: Khởi động API và chờ sẵn sàng
+        run: |
+          nohup npm start > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/products > /dev/null; then
+              echo "API sẵn sàng sau $((i*2)) giây"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API không khởi động được. Log:"
+          cat api.log
+          exit 1
+
+      - name: Chạy bộ test CRUD
+        run: bash scripts/crud-test.sh
+
+      - name: Kiểm tra chỉ mục pid duy nhất trong MongoDB
+        run: |
+          CID=$(docker ps --filter "ancestor=mongo:7.0" -q | head -n 1)
+          docker exec "$CID" mongosh --quiet productdb_ci \
+            --eval 'print(JSON.stringify(db.products.getIndexes()))' | tee indexes.json
+          grep -q '"unique":true' indexes.json
+
+      - name: In log API nếu có lỗi
+        if: failure()
+        run: cat api.log
+
+  compose-e2e:
+    name: E2E với Docker Compose
+    needs: crud-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Kiểm tra docker-compose
+        run: docker compose config
+
+      - name: Build và chạy, chờ cả hai service healthy
+        run: docker compose up -d --build --wait
+
+      - name: Hiện trạng thái container
+        run: docker compose ps
+
+      - name: Chạy bộ test CRUD qua Compose
+        run: bash scripts/crud-test.sh
+
+      - name: Dữ liệu còn sau khi down rồi up (volume)
+        run: |
+          curl -sf -X POST http://localhost:3000/api/products \
+            -H "Content-Type: application/json" \
+            -d '{"pid":900001,"pname":"Persist","price":1,"quantity":1}'
+          docker compose down
+          docker compose up -d --wait
+          curl -sf http://localhost:3000/api/products/900001 | jq -e '.pname == "Persist"'
+          curl -sf -X DELETE http://localhost:3000/api/products/900001
+
+      - name: In log nếu có lỗi
+        if: failure()
+        run: docker compose logs
+
+      - name: Dọn dẹp
+        if: always()
+        run: docker compose down -v
