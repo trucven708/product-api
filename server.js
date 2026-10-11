@@ -17,3 +17,4 @@ mongoose.connect(process.env.MONGO_URI)
     console.error('Kết nối MongoDB thất bại:', err.message);
     process.exit(1);
   });
+  const = ;
