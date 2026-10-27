@@ -29,12 +29,25 @@ services:
       nammongodb:
         condition: service_healthy
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/products', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  watchtower:
+    image: nickfedor/watchtower:1.19.0
+    container_name: watchtower-prod
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "60"
+      WATCHTOWER_CLEANUP: "true"
 
 volumes:
   mongo-data-prod:
