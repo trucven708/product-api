@@ -16,6 +16,7 @@ services:
 
   product-api:
     build: .
+    image: ${DOCKER_IMAGE:-product-api:local}
     container_name: product-api
     ports:
       - "3000:3000"

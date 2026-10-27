@@ -1,0 +1,65 @@
+name: CD Docker Hub
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci-and-deploy:
+    name: Kiểm tra (healthcheck + CRUD) rồi push Docker Hub
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Kiểm tra đã khai báo secrets
+        run: |
+          [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] || { echo "Thiếu secret DOCKERHUB_USERNAME"; exit 1; }
+          [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ] || { echo "Thiếu secret DOCKERHUB_TOKEN"; exit 1; }
+
+      - name: Đặt tên image theo mã commit
+        run: echo "DOCKER_IMAGE=${DH_USER}/product-api:${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build và chạy, chờ cả hai service healthy
+        run: docker compose up -d --build --wait
+
+      - name: Xác nhận trạng thái healthy
+        run: |
+          docker compose ps
+          for s in nammongodb product-api; do
+            st=$(docker inspect --format '{{.State.Health.Status}}' "$s")
+            echo "$s: $st"
+            [ "$st" = "healthy" ] || exit 1
+          done
+
+      - name: Chạy bộ test CRUD
+        run: bash scripts/crud-test.sh
+
+      - name: In log nếu có lỗi
+        if: failure()
+        run: docker compose logs
+
+      - name: Đăng nhập Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Gắn tag và push lên Docker Hub
+        run: |
+          docker tag "$DOCKER_IMAGE" "${DH_USER}/product-api:latest"
+          docker push "$DOCKER_IMAGE"
+          docker push "${DH_USER}/product-api:latest"
+
+      - name: Dọn dẹp
+        if: always()
+        run: docker compose down -v
