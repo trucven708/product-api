@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('Đã kết nối MongoDB');
-    app.listen(PORT, () => console.log(`API chạy tại http://localhost:${PORT} - bản CD tự động`));
+    app.listen(PORT, () => console.log(`API chạy tại http://localhost:${PORT} - demo Docker Compose`));
   })
   .catch((err) => {
     console.error('Kết nối MongoDB thất bại:', err.message);
