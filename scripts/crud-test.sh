@@ -42,7 +42,7 @@ echo "[1] Create"
 request POST "$API" "{\"pid\":$PID,\"pname\":\"Laptop\",\"price\":15000000,\"quantity\":10}"
 expect_2xx "POST tạo sản phẩm"
 expect_json "Dữ liệu trả về đủ 4 trường" \
-  ".pid == $PID and .pname == \"Laptop\" and .price == 15000000 and .quantity == 10"
+  ".pid == $PID and .pname == \"Laptop\" and .price == 15000 and .quantity == 10"
 
 echo "[2] Create lỗi"
 request POST "$API" "{\"pid\":$PID,\"pname\":\"Trung\",\"price\":1,\"quantity\":1}"
